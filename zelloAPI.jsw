@@ -1,0 +1,76 @@
+// Filename: backend/ZelloAPI.jsw
+import { fetch } from 'wix-fetch';
+import crypto from 'crypto-js';
+
+// Hard-coded Zello credentials
+const ZELLO_CREDENTIALS = {
+    password: 'YOUR_PASSWORD', // Replace with your Zello password
+    apiBase: 'https://zellowork.io', // Base URL for Zello API
+    username: 'YOUR_USERNAME', // Replace with your Zello username
+    apiKey: 'YOUR_API_KEY' // Replace with your Zello API Key
+};
+
+// Login to Zello and get a session token
+async function zelloLogin() {
+    try {
+        // Get the token using a GET request
+        const getTokenResponse = await fetch(`${ZELLO_CREDENTIALS.apiBase}/user/gettoken`);
+        const getTokenData = await getTokenResponse.json();
+
+        if (!getTokenResponse.ok || getTokenData.status !== 'OK') {
+            throw new Error('Failed to get token');
+        }
+
+        const token = getTokenData.token;
+        const sid = getTokenData.sid;
+
+        // Hash the password with the token and apiKey
+        const hashedPassword = crypto.MD5(crypto.MD5(ZELLO_CREDENTIALS.password) + token + ZELLO_CREDENTIALS.apiKey).toString();
+
+        // Perform the login using a POST request
+        const loginResponse = await fetch(`${ZELLO_CREDENTIALS.apiBase}/user/login?sid=${sid}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `username=${encodeURIComponent(ZELLO_CREDENTIALS.username)}&password=${hashedPassword}`
+        });
+
+        const loginData = await loginResponse.json();
+
+        if (!loginResponse.ok || loginData.status !== 'OK') {
+            throw new Error('Login failed');
+        }
+
+        return sid; // Return the session ID for authenticated requests
+    } catch (error) {
+        console.error("Error during Zello login: ", error);
+        throw error;
+    }
+}
+
+// Fetch locations for specified users
+export async function fetchUserLocations() {
+    try {
+        const sid = await zelloLogin(); // Get the session ID from Zello login
+
+        // List of users to track
+        const usersToTrack = ['TT79', 'ST279', 'BOX TRUCK', 'LUCY', 'POPEYE', 'HAULER'];
+        let locations = [];
+
+        for (let username of usersToTrack) {
+            const response = await fetch(`${ZELLO_CREDENTIALS.apiBase}/location/getuser/${username}?sid=${sid}`);
+            if (response.ok) {
+                const data = await response.json();
+                locations.push({ username, location: data.locations });
+            } else {
+                console.error(`Failed to fetch location for ${username}`);
+            }
+        }
+
+        return locations;
+    } catch (error) {
+        console.error("Error fetching user locations: ", error);
+        throw error; // Ensure the error is thrown to be caught by frontend or logs
+    }
+}
